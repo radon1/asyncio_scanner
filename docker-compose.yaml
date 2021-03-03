@@ -1,0 +1,65 @@
+version: "3.5"
+services:
+  web:
+    build: .
+    environment:
+      REDIS_ADDRESS: redis
+      REDIS_PORT: 6379
+      POSTGRES_URL: "postgresql://postgres:${POSTGRES_PASSWORD}@db/postgres"
+    ports:
+      - "8888:8888"
+    entrypoint: python asyncio_scanner.py web
+    depends_on:
+      - db
+      - redis
+      - worker
+  proxy:
+    image: "nginx:1.17.3-alpine"
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Docker/nginx:/etc/nginx/conf.d:ro
+    secrets:
+      - nginx_cert
+      - nginx_cert_key
+    depends_on:
+      - web
+  db:
+    environment:
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+    image: "postgres:12.6-alpine"
+    deploy:
+      resources:
+        limits:
+          memory: 150M
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+  redis:
+    image: "redis:6.0.8-alpine"
+    deploy:
+      resources:
+        limits:
+          memory: 50M
+    ports:
+      - "6379:6379"
+  worker:
+    environment:
+      REDIS_ADDRESS: redis
+      REDIS_PORT: 6379
+    build: .
+    depends_on:
+      - redis
+    entrypoint: python asyncio_scanner.py worker
+secrets:
+  nginx_cert:
+    file: ${NGINX_CERT:?err}
+  nginx_cert_key:
+    file: ${NGINX_CERT_KEY:?err}
